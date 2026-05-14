@@ -338,18 +338,16 @@ async function syncPendingEmployees() {
 // Test Device Connection
 async function testDeviceConnection() {
     log('Testing device connection...');
-
     try {
         const response = await digestAuth.request(
             'GET',
             `http://${DEVICE_IP}/ISAPI/System/deviceInfo`,
             null,
-            'application/json'
+            'application/xml'  // ← XML accept karo JSON nahi
         );
 
         if (response.status === 200) {
             log('✅ Device connection successful', 'SUCCESS');
-            log(`Device: ${JSON.stringify(response.data).substring(0, 100)}...`);
             return true;
         } else {
             log(`Device connection failed: ${response.status}`, 'ERROR');

@@ -315,5 +315,66 @@ class HikvisionController extends Controller
             'success' => true,
             'message' => 'Employee marked as synced'
         ]);
+    }/**
+ * Sync attendance from device to system
+ */
+    public function syncAttendance(Request $request)
+    {
+    $punches = $request->input('punches', []);
+    $synced = 0;
+    $skipped = 0;
+    $errors = [];
+
+    foreach ($punches as $punch) {
+        try {
+            if (empty($punch['employeeNo'])) {
+                $skipped++;
+                continue;
+            }
+
+            $user = \App\Models\User::where(
+                'device_employee_no', $punch['employeeNo']
+            )->first();
+
+            if (!$user) {
+                $errors[] = "Employee not found: " . $punch['employeeNo'];
+                $skipped++;
+                continue;
+            }
+
+            $existingAttendance = \App\Models\Attendance::where('user_id', $user->id)
+                ->whereDate('clock_in_time', \Carbon\Carbon::today())
+                ->first();
+
+            if (!$existingAttendance) {
+                \App\Models\Attendance::create([
+                    'user_id' => $user->id,
+                    'business_id' => 1,
+                    'clock_in_time' => $punch['time'],
+                    'ip_address' => 'Hikvision Device',
+                    'clock_in_note' => 'Auto synced from fingerprint device',
+                ]);
+                $synced++;
+            } elseif (empty($existingAttendance->clock_out_time)) {
+                $existingAttendance->update([
+                    'clock_out_time' => $punch['time'],
+                    'clock_out_note' => 'Auto synced from fingerprint device',
+                ]);
+                $synced++;
+            } else {
+                $skipped++;
+            }
+        } catch (\Exception $e) {
+            $errors[] = $e->getMessage();
+            $skipped++;
+        }
     }
+
+    return response()->json([
+        'success' => true,
+        'synced_count' => $synced,
+        'skipped_count' => $skipped,
+        'errors' => $errors,
+    ]);
+}
 }
