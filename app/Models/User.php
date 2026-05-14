@@ -25,6 +25,8 @@ class User extends Authenticatable
         'password',
         'device_employee_no',
         'business_id',
+        'device_synced',
+        'fingerprint_data',
     ];
 
     /**

@@ -1,0 +1,15 @@
+{
+    "name": "hikvision-middleware",
+    "version": "1.0.0",
+    "description": "Middleware service for Hikvision device and Laravel API",
+    "main": "middleware.js",
+    "scripts": {
+        "start": "node middleware.js",
+        "dev": "node middleware.js"
+    },
+    "dependencies": {
+        "axios": "^1.11.0",
+        "dotenv": "^16.4.5",
+        "xml2js": "^0.6.2"
+    }
+}

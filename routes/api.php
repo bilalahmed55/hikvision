@@ -23,4 +23,6 @@ Route::prefix('hikvision')->group(function () {
     Route::post('/fingerprint/capture', [HikvisionController::class, 'captureFingerprint']);
     Route::post('/fingerprint/store', [HikvisionController::class, 'storeFingerprint']);
     Route::post('/attendance', [HikvisionController::class, 'getAttendance']);
+    Route::get('/pending-employees', [HikvisionController::class, 'getPendingEmployees']);
+    Route::put('/employees/{id}/mark-synced', [HikvisionController::class, 'markEmployeeSynced']);
 });

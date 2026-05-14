@@ -274,4 +274,46 @@ class HikvisionController extends Controller
             'data' => $response
         ]);
     }
+
+    /**
+     * Get pending employees that need to be synced to device
+     */
+    public function getPendingEmployees()
+    {
+        $pendingEmployees = \App\Models\User::where(function($query) {
+            $query->where('device_synced', 0)
+                  ->orWhereNull('device_synced');
+        })
+        ->whereNotNull('device_employee_no')
+        ->select('id', 'device_employee_no', 'name', 'fingerprint_data')
+        ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $pendingEmployees
+        ]);
+    }
+
+    /**
+     * Mark employee as synced to device
+     */
+    public function markEmployeeSynced($id)
+    {
+        $user = \App\Models\User::find($id);
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Employee not found'
+            ], 404);
+        }
+
+        $user->device_synced = 1;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee marked as synced'
+        ]);
+    }
 }
