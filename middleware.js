@@ -1,7 +1,9 @@
-const axios = require('axios');
-const crypto = require('crypto');
-const xml2js = require('xml2js');
-require('dotenv').config();
+import axios from 'axios';
+import crypto from 'crypto';
+import xml2js from 'xml2js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Configuration
 const DEVICE_IP = process.env.DEVICE_IP || '192.168.100.150';
