@@ -195,7 +195,7 @@ async function syncAttendance() {
         if (allPunches.length > 0) {
             // Send to Laravel
             const laravelResponse = await axios.post(
-                `${LARAVEL_URL}/api/v1/hikvision/attendance/sync`,
+                `${LARAVEL_URL}/api/hikvision/attendance/sync`,
                 { punches: allPunches },
                 {
                     headers: {
