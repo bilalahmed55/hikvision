@@ -576,9 +576,9 @@ async function main() {
         log('⚠️  Laravel connection failed. Will retry...', 'WARN');
     }
 
-    // Schedule command checking every 30 seconds
-    log('Scheduling command check every 30 seconds...');
-    setInterval(checkPendingCommands, 30 * 1000);
+    // Schedule command checking every 2 seconds
+    log('Scheduling command check every 2 seconds...');
+    setInterval(checkPendingCommands, 2000);
 
     // Run initial check after 5 seconds
     setTimeout(checkPendingCommands, 5000);

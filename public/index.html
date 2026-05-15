@@ -363,35 +363,35 @@
         // Step 1: Create Employee
         async function createEmployee() {
             const employeeNo = document.getElementById('employeeNo').value.trim();
-            const name = document.getElementById('employeeName').value.trim();
+            const employeeName = document.getElementById('employeeName').value.trim();
 
-            if (!employeeNo || !name) {
+            if (!employeeNo || !employeeName) {
                 showMessage('createMessage', 'Please fill all fields', 'error');
                 return;
             }
 
             try {
-                const response = await fetch(`${API_BASE}/users/create`, {
+                const response = await fetch(`${API_BASE}/commands`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ employeeNo, name })
+                    body: JSON.stringify({
+                        employee_no: employeeNo,
+                        employee_name: employeeName
+                    })
                 });
 
                 const data = await response.json();
 
                 if (response.ok && data.success) {
-                    currentEmployeeNo = employeeNo;
-                    showMessage('createMessage', data.message, 'success');
+                    showMessage('createMessage', 
+                        `✅ Employee added! Command ID: ${data.command.id}\n\nPlease go to device and place your finger now.\nScanner will activate within 2 seconds.`, 
+                        'success');
                     
-                    // Move to step 2
-                    setTimeout(() => {
-                        document.getElementById('stepForm1').classList.add('hidden');
-                        document.getElementById('stepForm2').classList.remove('hidden');
-                        document.getElementById('step1').classList.add('completed');
-                        document.getElementById('step2').classList.add('active');
-                    }, 1000);
+                    // Reset form
+                    document.getElementById('employeeNo').value = '';
+                    document.getElementById('employeeName').value = '';
                 } else {
-                    showMessage('createMessage', data.message || 'Failed to create employee', 'error');
+                    showMessage('createMessage', 'Failed: ' + (data.message || 'Unknown error'), 'error');
                 }
             } catch (error) {
                 showMessage('createMessage', 'Error: ' + error.message, 'error');
