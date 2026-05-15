@@ -15,4 +15,9 @@ Route::prefix('hikvision')->group(function () {
     Route::post('/attendance/sync', [HikvisionController::class, 'syncAttendance']);
     Route::get('/pending-employees', [HikvisionController::class, 'getPendingEmployees']);
     Route::put('/employees/{id}/mark-synced', [HikvisionController::class, 'markEmployeeSynced']);
+    Route::post('/sync-employees', [HikvisionController::class, 'syncEmployeesFromDevice']);
+    Route::get('/employees-list', [HikvisionController::class, 'getEmployeesList']);
+    Route::get('/commands/pending', [HikvisionController::class, 'getPendingCommands']);
+    Route::put('/commands/{id}', [HikvisionController::class, 'updateCommandStatus']);
+    Route::post('/commands', [HikvisionController::class, 'createCommand']);
 });

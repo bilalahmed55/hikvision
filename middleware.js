@@ -381,6 +381,180 @@ async function testLaravelConnection() {
     }
 }
 
+// Check and Process Pending Commands
+async function checkPendingCommands() {
+    log('Checking for pending commands...');
+
+    try {
+        const response = await axios.get(
+            `${LARAVEL_URL}/api/hikvision/commands/pending`,
+            {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            }
+        );
+
+        if (response.status === 200) {
+            const commands = response.data.commands || [];
+
+            if (commands.length === 0) {
+                log('No pending commands');
+                return;
+            }
+
+            log(`Found ${commands.length} pending command(s)`);
+
+            for (const command of commands) {
+                await processCommand(command);
+            }
+        }
+    } catch (error) {
+        log(`Error checking pending commands: ${error.message}`, 'ERROR');
+        if (error.response) {
+            log(`Response: ${JSON.stringify(error.response.data)}`, 'ERROR');
+        }
+    }
+}
+
+// Process Individual Command
+async function processCommand(command) {
+    log(`Processing command ${command.id}: ${command.type} for ${command.employee_name} (${command.employee_no})`);
+
+    try {
+        // STEP A: Create employee on device
+        log(`Creating employee ${command.employee_no} on device...`);
+
+        const userBody = {
+            UserInfo: {
+                employeeNo: command.employee_no,
+                name: command.employee_name,
+                userType: 'normal',
+                Valid: {
+                    enable: true,
+                    beginTime: '2020-01-01T00:00:00',
+                    endTime: '2030-12-31T23:59:59',
+                    timeType: 'local'
+                }
+            }
+        };
+
+        const createResponse = await digestAuth.request(
+            'POST',
+            `http://${DEVICE_IP}/ISAPI/AccessControl/UserInfo/Record?format=json`,
+            JSON.stringify(userBody),
+            'application/json'
+        );
+
+        if (createResponse.status !== 200) {
+            throw new Error(`Failed to create user on device: ${createResponse.status}`);
+        }
+
+        log(`✅ Employee ${command.employee_no} created on device`, 'SUCCESS');
+
+        // STEP B: Trigger fingerprint scanner
+        log(`Triggering fingerprint scanner for ${command.employee_no}...`);
+        log('⏳ Waiting for employee to place finger (30 seconds timeout)...');
+
+        const xml = '<?xml version="1.0" encoding="UTF-8"?>' +
+            '<CaptureFingerPrintCond version="2.0" xmlns="http://www.isapi.org/ver20/XMLSchema">' +
+            '<fingerNo>1</fingerNo>' +
+            '<readerID>1</readerID>' +
+            '<cancelFlag>false</cancelFlag>' +
+            '<collectingPhases>1</collectingPhases>' +
+            '</CaptureFingerPrintCond>';
+
+        const captureResponse = await digestAuth.request(
+            'POST',
+            `http://${DEVICE_IP}/ISAPI/AccessControl/CaptureFingerPrint`,
+            xml,
+            'application/xml'
+        );
+
+        if (captureResponse.status !== 200) {
+            throw new Error(`Failed to capture fingerprint: ${captureResponse.status}`);
+        }
+
+        log(`✅ Fingerprint captured for ${command.employee_no}`, 'SUCCESS');
+
+        // Parse XML response to get fingerprint data
+        const parser = new xml2js.Parser();
+        const xmlResult = await parser.parseStringPromise(captureResponse.data);
+
+        const fingerData = xmlResult?.CaptureFingerPrintResult?.fingerData?.[0] || '';
+        const quality = xmlResult?.CaptureFingerPrintResult?.fingerPrintQuality?.[0] || 0;
+
+        log(`Fingerprint quality: ${quality}`);
+
+        // STEP C: Store fingerprint on device
+        if (fingerData) {
+            log(`Storing fingerprint for ${command.employee_no}...`);
+
+            const fingerprintBody = {
+                FingerPrintCfg: {
+                    employeeNo: command.employee_no,
+                    fingerPrintID: 1,
+                    fingerData: fingerData,
+                    fingerType: 'normalFP',
+                    enableCardReader: [1]
+                }
+            };
+
+            const storeResponse = await digestAuth.request(
+                'POST',
+                `http://${DEVICE_IP}/ISAPI/AccessControl/FingerPrint/SetUp?format=json`,
+                JSON.stringify(fingerprintBody),
+                'application/json'
+            );
+
+            if (storeResponse.status !== 200) {
+                throw new Error(`Failed to store fingerprint: ${storeResponse.status}`);
+            }
+
+            log(`✅ Fingerprint stored for ${command.employee_no}`, 'SUCCESS');
+        }
+
+        // Update command status to completed
+        await axios.put(
+            `${LARAVEL_URL}/api/hikvision/commands/${command.id}`,
+            {
+                status: 'completed',
+                result: `Fingerprint enrolled successfully. Quality: ${quality}`
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            }
+        );
+
+        log(`✅ Command ${command.id} completed successfully`, 'SUCCESS');
+
+    } catch (error) {
+        log(`❌ Error processing command ${command.id}: ${error.message}`, 'ERROR');
+
+        // Update command status to failed
+        try {
+            await axios.put(
+                `${LARAVEL_URL}/api/hikvision/commands/${command.id}`,
+                {
+                    status: 'failed',
+                    result: `Error: ${error.message}`
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+        } catch (updateError) {
+            log(`Failed to update command status: ${updateError.message}`, 'ERROR');
+        }
+    }
+}
+
 // Main Function
 async function main() {
     log('=================================================');
@@ -402,19 +576,12 @@ async function main() {
         log('⚠️  Laravel connection failed. Will retry...', 'WARN');
     }
 
-    // Schedule attendance sync every 5 minutes
-    log('Scheduling attendance sync every 5 minutes...');
-    setInterval(syncAttendance, 5 * 60 * 1000);
+    // Schedule command checking every 30 seconds
+    log('Scheduling command check every 30 seconds...');
+    setInterval(checkPendingCommands, 30 * 1000);
 
-    // Run initial sync after 10 seconds
-    setTimeout(syncAttendance, 10000);
-
-    // Schedule pending employees check every 1 minute
-    log('Scheduling pending employees check every 1 minute...');
-    setInterval(syncPendingEmployees, 1 * 60 * 1000);
-
-    // Run initial check after 15 seconds
-    setTimeout(syncPendingEmployees, 15000);
+    // Run initial check after 5 seconds
+    setTimeout(checkPendingCommands, 5000);
 
     log('✅ Middleware service is running!', 'SUCCESS');
     log('Press Ctrl+C to stop');

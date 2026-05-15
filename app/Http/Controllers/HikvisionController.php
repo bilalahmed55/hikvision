@@ -378,3 +378,183 @@ class HikvisionController extends Controller
     ]);
 }
 }
+
+    /**
+     * Sync employees from device to database
+     */
+    public function syncEmployeesFromDevice()
+    {
+        try {
+            // Fetch all users from device
+            $body = json_encode([
+                'UserInfoSearchCond' => [
+                    'searchID' => '1',
+                    'maxResults' => 1000,
+                    'searchResultPosition' => 0
+                ]
+            ]);
+
+            $response = $this->deviceRequest('POST', '/ISAPI/AccessControl/UserInfo/Search?format=json', $body);
+
+            if (isset($response['error'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to fetch users from device',
+                    'data' => $response
+                ]);
+            }
+
+            $users = $response['UserInfoSearch']['UserInfo'] ?? [];
+            
+            // Handle single user response (not array)
+            if (!is_array($users) || (isset($users['employeeNo']) && !isset($users[0]))) {
+                $users = [$users];
+            }
+
+            $synced = 0;
+            $total = count($users);
+
+            foreach ($users as $user) {
+                if (empty($user['employeeNo'])) {
+                    continue;
+                }
+
+                \App\Models\Employee::updateOrCreate(
+                    ['device_employee_no' => $user['employeeNo']],
+                    [
+                        'name' => $user['name'] ?? 'Unknown',
+                        'user_type' => $user['userType'] ?? 'normal',
+                        'fingerprint_enrolled' => isset($user['numOfFP']) && $user['numOfFP'] > 0,
+                        'device_synced' => true,
+                    ]
+                );
+
+                $synced++;
+            }
+
+            return response()->json([
+                'success' => true,
+                'total' => $total,
+                'synced' => $synced,
+                'message' => "Successfully synced {$synced} employees from device"
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error syncing employees: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all employees from database
+     */
+    public function getEmployeesList()
+    {
+        try {
+            $employees = \App\Models\Employee::orderBy('device_employee_no', 'asc')->get();
+
+            return response()->json([
+                'success' => true,
+                'total' => $employees->count(),
+                'data' => $employees
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching employees: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get pending commands and mark them as processing
+     */
+    public function getPendingCommands()
+    {
+        try {
+            // Get all pending commands
+            $commands = \App\Models\DeviceCommand::where('status', 'pending')->get();
+
+            // Update their status to processing
+            \App\Models\DeviceCommand::where('status', 'pending')
+                ->update(['status' => 'processing']);
+
+            return response()->json([
+                'success' => true,
+                'commands' => $commands
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching pending commands: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update command status
+     */
+    public function updateCommandStatus(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'status' => 'required|string|in:pending,processing,completed,failed',
+                'result' => 'nullable|string',
+            ]);
+
+            $command = \App\Models\DeviceCommand::find($id);
+
+            if (!$command) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Command not found'
+                ], 404);
+            }
+
+            $command->update([
+                'status' => $request->status,
+                'result' => $request->result,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'command' => $command
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating command: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a new device command
+     */
+    public function createCommand(Request $request)
+    {
+        try {
+            $request->validate([
+                'employee_no' => 'required|string',
+                'employee_name' => 'required|string',
+            ]);
+
+            $command = \App\Models\DeviceCommand::create([
+                'employee_no' => $request->employee_no,
+                'employee_name' => $request->employee_name,
+                'type' => 'enroll_fingerprint',
+                'status' => 'pending',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'command' => $command
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error creating command: ' . $e->getMessage()
+            ], 500);
+        }
+    }
